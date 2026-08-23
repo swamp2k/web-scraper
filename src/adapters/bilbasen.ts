@@ -1,4 +1,4 @@
-import { parseDanishNumber, readTextLimited } from "../http.js";
+import { parseDanishNumber } from "../http.js";
 import type { Listing, ScraperAdapter } from "../types.js";
 
 const HOSTS = new Set(["bilbasen.dk", "www.bilbasen.dk"]);
@@ -25,6 +25,10 @@ type ListingData = {
 type BilbasenNextData = {
   props?: { pageProps?: { dehydratedState?: { queries?: Array<{ state?: { data?: ListingData } }> } } };
 };
+type BrowserContentResponse = {
+  success: boolean;
+  result?: string;
+};
 
 export const bilbasenAdapter: ScraperAdapter = {
   id: "bilbasen",
@@ -49,9 +53,17 @@ export const bilbasenAdapter: ScraperAdapter = {
         waitForSelector: { selector: "#__NEXT_DATA__", timeout: 10000 }
       });
 
-      if (!response.ok) throw new Error(`Bilbasen browser render returned HTTP ${response.status}`);
-      const html = await readTextLimited(response, 8_000_000);
-      const pageData = extractPageData(html);
+      if (!response.ok) {
+        const detail = (await response.text()).slice(0, 500);
+        throw new Error(`Bilbasen Browser Run returned HTTP ${response.status}: ${detail}`);
+      }
+
+      const rendered = (await response.json()) as BrowserContentResponse;
+      if (!rendered.success || typeof rendered.result !== "string") {
+        throw new Error("Bilbasen Browser Run returned an unsuccessful response");
+      }
+
+      const pageData = extractPageData(rendered.result);
       if (!pageData) break;
 
       pagesFetched += 1;
